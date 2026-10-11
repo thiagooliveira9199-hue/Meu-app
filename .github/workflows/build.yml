@@ -29,9 +29,40 @@ jobs:
       - name: Criar projeto Android
         run: |
           npm init -y
-          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6
           mkdir -p www
           cp index.html www/index.html
+          cat > www/download-shim.js << 'EOF'
+          (function () {
+            var click0 = HTMLAnchorElement.prototype.click;
+            function salvar(blob, nome) {
+              var P = (window.Capacitor && window.Capacitor.Plugins) || {};
+              var r = new FileReader();
+              r.onloadend = function () {
+                var b64 = String(r.result).split(',')[1] || '';
+                P.Filesystem.writeFile({ path: nome, data: b64, directory: 'CACHE' })
+                  .then(function (res) {
+                    return P.Share.share({ title: nome, files: [res.uri], dialogTitle: 'Salvar ou compartilhar' });
+                  })
+                  .catch(function (e) {
+                    var m = String((e && e.message) || e);
+                    if (!/cancel/i.test(m)) alert('Erro ao salvar arquivo: ' + m);
+                  });
+              };
+              r.readAsDataURL(blob);
+            }
+            HTMLAnchorElement.prototype.click = function () {
+              var C = window.Capacitor;
+              if (C && C.isNativePlatform && C.isNativePlatform() && this.hasAttribute('download') && /^blob:/.test(this.href)) {
+                var nome = this.getAttribute('download') || 'arquivo';
+                fetch(this.href).then(function (r) { return r.blob(); }).then(function (b) { salvar(b, nome); });
+                return;
+              }
+              return click0.apply(this, arguments);
+            };
+          })();
+          EOF
+          sed -i '0,/<head[^>]*>/s//&<script src="download-shim.js"><\/script>/' www/index.html
           npx cap init "Controle de Estoque" com.meuapp.estoque --web-dir=www
           npx cap add android
           npx cap sync android
