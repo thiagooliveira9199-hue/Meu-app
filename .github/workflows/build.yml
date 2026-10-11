@@ -1,5 +1,9 @@
 name: Build APK
 on: workflow_dispatch
+permissions:
+  contents: write
+env:
+  KS_FILE: ${{ github.workspace }}/release.keystore
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,6 +16,16 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Chave de assinatura fixa
+        run: |
+          if [ ! -f release.keystore ]; then
+            keytool -genkeypair -keystore release.keystore -alias meuapp -keyalg RSA -keysize 2048 -validity 36500 -storepass estoque123456 -keypass estoque123456 -dname "CN=Meu App, O=Meu App, C=BR"
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add release.keystore
+            git commit -m "Adiciona chave de assinatura"
+            git push
+          fi
       - name: Criar projeto Android
         run: |
           npm init -y
@@ -21,6 +35,17 @@ jobs:
           npx cap init "Controle de Estoque" com.meuapp.estoque --web-dir=www
           npx cap add android
           npx cap sync android
+      - name: Icone
+        run: |
+          sudo apt-get install -y imagemagick
+          R=android/app/src/main/res
+          rm -f $R/mipmap-anydpi-v26/ic_launcher.xml $R/mipmap-anydpi-v26/ic_launcher_round.xml
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            n=${d%%:*}; s=${d##*:}
+            for f in ic_launcher ic_launcher_round; do
+              convert icone.png -resize ${s}x${s} -background white -gravity center -extent ${s}x${s} $R/mipmap-$n/$f.png
+            done
+          done
       - name: Tela cheia
         run: |
           cat > android/app/src/main/java/com/meuapp/estoque/MainActivity.java << 'EOF'
@@ -44,9 +69,28 @@ jobs:
             }
           }
           EOF
+      - name: Configurar assinatura
+        run: |
+          cat >> android/app/build.gradle << 'EOF'
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv("KS_FILE"))
+                      storePassword "estoque123456"
+                      keyAlias "meuapp"
+                      keyPassword "estoque123456"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
       - name: Compilar
-        run: cd android && ./gradlew assembleDebug
+        run: cd android && ./gradlew assembleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: app-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
