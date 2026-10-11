@@ -13,7 +13,15 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Criar projeto Android
-            - name: Tela cheia
+        run: |
+          npm init -y
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          mkdir -p www
+          cp index.html www/index.html
+          npx cap init "Controle de Estoque" com.meuapp.estoque --web-dir=www
+          npx cap add android
+          npx cap sync android
+      - name: Tela cheia
         run: |
           cat > android/app/src/main/java/com/meuapp/estoque/MainActivity.java << 'EOF'
           package com.meuapp.estoque;
@@ -36,14 +44,6 @@ jobs:
             }
           }
           EOF
-        run: |
-          npm init -y
-          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
-          mkdir -p www
-          cp index.html www/index.html
-          npx cap init "Controle de Estoque" com.meuapp.estoque --web-dir=www
-          npx cap add android
-          npx cap sync android
       - name: Compilar
         run: cd android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
